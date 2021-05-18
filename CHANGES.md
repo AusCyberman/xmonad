@@ -33,6 +33,15 @@
   * Change `ScreenDetail` to a newtype and make `RationalRect` strict in
     its contents.
 
+  * Fixed dunst notifications being obscured when moving floats.
+    https://github.com/xmonad/xmonad/issues/208
+
+  * Added `Foldable`, `Functor`, and `Traversable` instances for `Stack`.
+
+  * `util/GenerateManpage.hs` is no longer distributed in the tarball.
+    Instead, the manpage source is regenerated and manpage rebuilt
+    automatically in CI.
+
 ## 0.15 (September 30, 2018)
 
   * Reimplement `sendMessage` to deal properly with windowset changes made

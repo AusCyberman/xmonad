@@ -27,7 +27,7 @@ author:             Spencer Janssen, Don Stewart, Adam Vogt, David Roundy, Jason
                     Ondřej Súkup, Paul Hebble, Shachaf Ben-Kiki, Siim Põder, Tim McIver,
                     Trevor Elliott, Wouter Swierstra, Conrad Irwin, Tim Thelion
 maintainer:         xmonad@haskell.org
-tested-with:        GHC == 8.4.4 || == 8.6.5 || == 8.8.4 || == 8.10.3
+tested-with:        GHC == 8.4.4 || == 8.6.5 || == 8.8.4 || == 8.10.4 || == 9.0.1
 category:           System
 homepage:           http://xmonad.org
 bug-reports:        https://github.com/xmonad/xmonad/issues
@@ -43,7 +43,6 @@ extra-source-files: README.md
                     man/xmonad.1
                     man/xmonad.1.html
                     man/xmonad.hs
-                    util/GenerateManpage.hs
                     util/hpcReport.sh
 cabal-version:      >= 1.8
 
@@ -51,15 +50,12 @@ source-repository head
   type:     git
   location: https://github.com/xmonad/xmonad
 
-flag testing
+flag pedantic
+  description: Be pedantic (-Werror and the like)
   default:     False
   manual:      True
-  description: Testing mode, only build minimal components
 
-flag generatemanpage
-  default:     False
-  manual:      True
-  description: Build the tool for generating the man page
+flag quickcheck-classes
 
 library
   exposed-modules: XMonad
@@ -81,35 +77,30 @@ library
                  , mtl
                  , process
                  , setlocale
+                 , transformers          >= 0.3
                  , unix
                  , utf8-string           >= 0.3 && < 1.1
                  , microlens
-  ghc-options:     -funbox-strict-fields -Wall -fno-warn-unused-do-bind -Wno-unused-imports
+  ghc-options:     -funbox-strict-fields -Wall -fno-warn-unused-do-bind
 
   -- Keep this in sync with the oldest version in 'tested-with'
-  if impl(ghc <= 8.4.4)
-     ghc-options: -Werror=unused-imports
+  if impl(ghc > 8.4.4)
+    ghc-options:   -Wno-unused-imports
 
-  if flag(testing)
-    buildable: False
+  if flag(pedantic)
+    ghc-options:   -Werror
 
 executable xmonad
   main-is:       Main.hs
   build-depends: base, X11, mtl, unix, xmonad
-  ghc-options:   -Wall -fno-warn-unused-do-bind -Wno-unused-imports
+  ghc-options:   -Wall -fno-warn-unused-do-bind
 
   -- Keep this in sync with the oldest version in 'tested-with'
-  if impl(ghc <= 8.4.4)
-     ghc-options: -Werror=unused-imports
+  if impl(ghc > 8.4.4)
+    ghc-options:   -Wno-unused-imports
 
-executable generatemanpage
-  main-is:        GenerateManpage.hs
-  hs-source-dirs: util
-
-  if flag(generatemanpage)
-    build-depends: base, pandoc > 2.10, regex-posix, text
-  else
-    buildable: False
+  if flag(pedantic)
+    ghc-options:   -Werror
 
 test-suite properties
   type:           exitcode-stdio-1.0
@@ -132,4 +123,16 @@ test-suite properties
                   Properties.Workspace
                   Utils
   hs-source-dirs: tests
-  build-depends:  base, QuickCheck >= 2, X11, containers, xmonad
+  build-depends:  base
+                , QuickCheck >= 2
+                , X11
+                , containers
+                , xmonad
+
+  if flag(quickcheck-classes) && impl(ghc > 8.5)
+    -- no quickcheck-classes in LTS-12
+    -- GHC 8.4 and lower needs too much boilerplate (Eq1, Show1, …)
+    build-depends: quickcheck-classes >= 0.4.3
+
+  if flag(pedantic)
+    ghc-options:   -Werror

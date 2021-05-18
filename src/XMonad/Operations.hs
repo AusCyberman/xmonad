@@ -36,7 +36,6 @@ import qualified Control.Exception as C
 
 import System.IO
 import System.Directory
-import System.FilePath ((</>))
 import System.Posix.Process (executeFile)
 import Graphics.X11.Xlib
 import Graphics.X11.Xinerama (getScreenInfo)
@@ -522,20 +521,6 @@ readStateFile xmc = do
     readStrict :: Handle -> IO String
     readStrict h = hGetContents h >>= \s -> length s `seq` return s
 
--- | Migrate state from a previously running xmonad instance that used
--- the older @--resume@ technique.
-{-# DEPRECATED migrateState "will be removed some point in the future." #-}
-migrateState :: (Functor m, MonadIO m) => Dirs -> String -> String -> m ()
-migrateState Dirs{ dataDir } ws xs = do
-    io (putStrLn "WARNING: --resume is no longer supported.")
-    whenJust stateData $ \s ->
-        catchIO (writeFile (dataDir </> "xmonad.state") $ show s)
-  where
-    stateData = StateFile <$> maybeRead ws <*> maybeRead xs
-    maybeRead s = case reads s of
-                    [(x, "")] -> Just x
-                    _         -> Nothing
-
 -- | @restart name resume@. Attempt to restart xmonad by executing the program
 -- @name@.  If @resume@ is 'True', restart with the current window state.
 -- When executing another window manager, @resume@ should be 'False'.
@@ -637,7 +622,6 @@ mouseDrag f done = do
 -- | drag the window under the cursor with the mouse while it is dragged
 mouseMoveWindow :: Window -> X ()
 mouseMoveWindow w = whenX (isClient w) $ withDisplay $ \d -> do
-    io $ raiseWindow d w
     wa <- io $ getWindowAttributes d w
     (_, _, _, ox', oy', _, _, _) <- io $ queryPointer d w
     let ox = fromIntegral ox'
@@ -652,7 +636,6 @@ mouseMoveWindow w = whenX (isClient w) $ withDisplay $ \d -> do
 -- | resize the window under the cursor with the mouse while it is dragged
 mouseResizeWindow :: Window -> X ()
 mouseResizeWindow w = whenX (isClient w) $ withDisplay $ \d -> do
-    io $ raiseWindow d w
     wa <- io $ getWindowAttributes d w
     sh <- io $ getWMNormalHints d w
     io $ warpPointer d none w 0 0 0 0 (fromIntegral (wa_width wa)) (fromIntegral (wa_height wa))
