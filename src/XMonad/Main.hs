@@ -59,7 +59,7 @@ xmonad :: (LayoutClass l Window, Read (l Window)) => XConfig l -> IO ()
 xmonad conf = do
     installSignalHandlers -- important to ignore SIGCHLD to avoid zombies
 
-    dirs <- getDirs
+    dirs <- getDirectories
     let launch' args = do
               catchIO (buildLaunch dirs)
               conf'@XConfig { layoutHook = Layout l }
@@ -111,8 +111,8 @@ usage = do
 --
 --   * Missing XMonad\/XMonadContrib modules due to ghc upgrade
 --
-buildLaunch :: Dirs -> IO ()
-buildLaunch dirs@Dirs{ dataDir } = do
+buildLaunch :: Directories -> IO ()
+buildLaunch dirs@Directories{ dataDir } = do
     whoami <- getProgName
     let compiledConfig = "xmonad-"++arch++"-"++os
     unless (whoami == compiledConfig) $ do
@@ -165,7 +165,7 @@ sendReplace = do
 -- function instead of 'xmonad'.  You probably also want to have a key
 -- binding to the 'XMonad.Operations.restart` function that restarts
 -- your custom binary with the resume flag set to @True@.
-launch :: (LayoutClass l Window, Read (l Window)) => XConfig l -> Dirs -> IO ()
+launch :: (LayoutClass l Window, Read (l Window)) => XConfig l -> Directories -> IO ()
 launch initxmc drs = do
     -- setup locale information from environment
     setLocale LC_ALL (Just "")
@@ -216,7 +216,7 @@ launch initxmc drs = do
             , mouseFocused  = False
             , mousePosition = Nothing
             , currentEvent  = Nothing
-            , dirs          = drs
+            , directories   = drs
             }
 
         st = XState
@@ -473,8 +473,11 @@ grabKeys = do
     -- build a map from keysyms to lists of keysyms (doing what
     -- XGetKeyboardMapping would do if the X11 package bound it)
     syms <- forM allCodes $ \code -> io (keycodeToKeysym dpy code 0)
-    let keysymMap = M.fromListWith (++) (zip syms [[code] | code <- allCodes])
-        keysymToKeycodes sym = M.findWithDefault [] sym keysymMap
+    let keysymMap' = M.fromListWith (++) (zip syms [[code] | code <- allCodes])
+    -- keycodeToKeysym returns noSymbol for all unbound keycodes, and we don't
+    -- want to grab those whenever someone accidentally uses def :: KeySym
+    let keysymMap = M.delete noSymbol keysymMap'
+    let keysymToKeycodes sym = M.findWithDefault [] sym keysymMap
     forM_ (M.keys ks) $ \(mask,sym) ->
          forM_ (keysymToKeycodes sym) $ \kc ->
               mapM_ (grab kc . (mask .|.)) =<< extraModifiers

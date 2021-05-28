@@ -23,13 +23,13 @@ module XMonad.Core (
     XConf(..), XConfig(..), LayoutClass(..),
     Layout(..), readsLayout, Typeable, Message,
     SomeMessage(..), fromMessage, LayoutMessages(..),
-    StateExtension(..), ExtensionClass(..),
+    StateExtension(..), ExtensionClass(..), ConfExtension(..),
     runX, catchX, userCode, userCodeDef, io, catchIO, installSignalHandlers, uninstallSignalHandlers,
     withDisplay, withWindowSet, isRoot, runOnWorkspaces,
     getAtom, spawn, spawnPID, xfork, recompile, trace, whenJust, whenX,
     getXMonadDir, getXMonadCacheDir, getXMonadDataDir, stateFileName,
     atom_WM_STATE, atom_WM_PROTOCOLS, atom_WM_DELETE_WINDOW, atom_WM_TAKE_FOCUS, withWindowAttributes,
-    ManageHook, Query(..), runQuery, Directories(..), Dirs, getDirs
+    ManageHook, Query(..), runQuery, Directories'(..), Directories, getDirectories,
   ) where
 
 import XMonad.StackSet hiding (modify)
@@ -94,7 +94,7 @@ data XConf = XConf
                                       -- ^ position of the mouse according to
                                       -- the event currently being processed
     , currentEvent :: !(Maybe Event)  -- ^ event currently being processed
-    , dirs         :: !Dirs           -- ^ directories to use
+    , directories  :: !Directories    -- ^ directories to use
     }
 
 -- todo, better name
@@ -122,6 +122,11 @@ data XConfig l = XConfig
     , rootMask           :: !EventMask           -- ^ The root events that xmonad is interested in
     , handleExtraArgs    :: !([String] -> XConfig Layout -> IO (XConfig Layout))
                                                  -- ^ Modify the configuration, complain about extra arguments etc. with arguments that are not handled by default
+    , extensibleConf     :: !(M.Map TypeRep ConfExtension)
+                                                 -- ^ Stores custom config information.
+                                                 --
+                                                 -- The module "XMonad.Util.ExtensibleConf" in xmonad-contrib
+                                                 -- provides additional information and a simple interface for using this.
     }
 
 
@@ -149,7 +154,7 @@ newtype ScreenDetail = SD { screenRect :: Rectangle }
 -- instantiated on 'XConf' and 'XState' automatically.
 --
 newtype X a = X (ReaderT XConf (StateT XState IO) a)
-    deriving (Functor, Monad, MonadFail, MonadIO, MonadState XState, MonadReader XConf, Typeable)
+    deriving (Functor, Monad, MonadFail, MonadIO, MonadState XState, MonadReader XConf)
 
 instance Applicative X where
   pure = return
@@ -378,12 +383,12 @@ instance Message Event
 -- layouts) should consider handling.
 data LayoutMessages = Hide              -- ^ sent when a layout becomes non-visible
                     | ReleaseResources  -- ^ sent when xmonad is exiting or restarting
-    deriving (Typeable, Eq)
+    deriving Eq
 
 instance Message LayoutMessages
 
 -- ---------------------------------------------------------------------
--- Extensible state
+-- Extensible state/config
 --
 
 -- | Every module must make the data it wants to store
@@ -409,6 +414,9 @@ data StateExtension =
     -- ^ Non-persistent state extension
   | forall a. (Read a, Show a, ExtensionClass a) => PersistentExtension a
     -- ^ Persistent extension
+
+-- | Existential type to store a config extension.
+data ConfExtension = forall a. Typeable a => ConfExtension a
 
 -- ---------------------------------------------------------------------
 -- | General utilities
@@ -470,9 +478,9 @@ runOnWorkspaces job = do
 -- * @cacheDir@: This directory is used to store temporary files that
 -- can easily be recreated.  For example, the XPrompt history file.
 --
--- For how these directories are chosen, see 'getDirs'.
+-- For how these directories are chosen, see 'getDirectories'.
 --
-data Directories a = Dirs
+data Directories' a = Directories
     { dataDir  :: !a
     , cfgDir   :: !a
     , cacheDir :: !a
@@ -481,7 +489,7 @@ data Directories a = Dirs
 
 -- | Convenient type alias for the most common case in which one might
 -- want to use the 'Directories' type.
-type Dirs = Directories FilePath
+type Directories = Directories' FilePath
 
 -- | Build up the 'Dirs' that xmonad will use.  They are chosen as
 -- follows:
@@ -498,13 +506,13 @@ type Dirs = Directories FilePath
 -- The xmonad configuration file (or the build script, if present) is
 -- always assumed to be in @cfgDir@.
 --
-getDirs :: IO Dirs
-getDirs = xmEnvDirs <|> xmDirs <|> xdgDirs
+getDirectories :: IO Directories
+getDirectories = xmEnvDirs <|> xmDirs <|> xdgDirs
   where
     -- | Check for xmonad's environment variables first
-    xmEnvDirs :: IO Dirs
+    xmEnvDirs :: IO Directories
     xmEnvDirs = do
-        let xmEnvs = Dirs{ dataDir  = "XMONAD_DATA_DIR"
+        let xmEnvs = Directories{ dataDir  = "XMONAD_DATA_DIR"
                          , cfgDir   = "XMONAD_CONFIG_DIR"
                          , cacheDir = "XMONAD_CACHE_DIR"
                          }
@@ -512,7 +520,7 @@ getDirs = xmEnvDirs <|> xmDirs <|> xdgDirs
 
     -- | Check whether the config file or a build script is in the
     -- @~\/.xmonad@ directory
-    xmDirs :: IO Dirs
+    xmDirs :: IO Directories
     xmDirs = do
         xmDir <- getAppUserDataDirectory "xmonad"
         conf  <- doesFileExist $ xmDir </> "xmonad.hs"
@@ -520,29 +528,29 @@ getDirs = xmEnvDirs <|> xmDirs <|> xdgDirs
 
         -- Place *everything* in ~/.xmonad if yes
         guard $ conf || build
-        pure Dirs{ dataDir = xmDir, cfgDir = xmDir, cacheDir = xmDir }
+        pure Directories{ dataDir = xmDir, cfgDir = xmDir, cacheDir = xmDir }
 
     -- | Use XDG directories as a fallback
-    xdgDirs :: IO Dirs
+    xdgDirs :: IO Directories
     xdgDirs =
-        for Dirs{ dataDir = XdgData, cfgDir = XdgConfig, cacheDir = XdgCache }
+        for Directories{ dataDir = XdgData, cfgDir = XdgConfig, cacheDir = XdgCache }
             $ \dir -> do d <- getXdgDirectory dir "xmonad"
                          d <$ createDirectoryIfMissing True d
 
 -- | Return the path to the xmonad configuration directory.
 getXMonadDir :: X String
-getXMonadDir = asks (cfgDir . dirs)
-{-# DEPRECATED getXMonadDir "Use `asks (cfgDir . dirs)' instead." #-}
+getXMonadDir = asks (cfgDir . directories)
+{-# DEPRECATED getXMonadDir "Use `asks (cfgDir . directories)' instead." #-}
 
 -- | Return the path to the xmonad cache directory.
 getXMonadCacheDir :: X String
-getXMonadCacheDir = asks (cacheDir . dirs)
-{-# DEPRECATED getXMonadCacheDir "Use `asks (cacheDir . dirs)' instead." #-}
+getXMonadCacheDir = asks (cacheDir . directories)
+{-# DEPRECATED getXMonadCacheDir "Use `asks (cacheDir . directories)' instead." #-}
 
 -- | Return the path to the xmonad data directory.
 getXMonadDataDir :: X String
-getXMonadDataDir = asks (dataDir . dirs)
-{-# DEPRECATED getXMonadDataDir "Use `asks (dataDir . dirs)' instead." #-}
+getXMonadDataDir = asks (dataDir . directories)
+{-# DEPRECATED getXMonadDataDir "Use `asks (dataDir . directories)' instead." #-}
 
 -- | Get the name of the file used to store the xmonad window state.
 stateFileName :: X FilePath
@@ -567,8 +575,8 @@ stateFileName = (</> "xmonad.state") <$> getXMonadDataDir
 --
 -- 'False' is returned if there are compilation errors.
 --
-recompile :: MonadIO m => Dirs -> Bool -> m Bool
-recompile Dirs{ cfgDir, dataDir } force = io $ do
+recompile :: MonadIO m => Directories -> Bool -> m Bool
+recompile Directories{ cfgDir, dataDir } force = io $ do
     let binn = "xmonad-"++arch++"-"++os
         bin  = dataDir </> binn
         err  = dataDir </> "xmonad.errors"
