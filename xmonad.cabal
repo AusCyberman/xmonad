@@ -1,5 +1,5 @@
 name:               xmonad
-version:            0.15
+version:            0.16.999
 synopsis:           A tiling window manager
 description:        xmonad is a tiling window manager for X. Windows are arranged
                     automatically to tile the screen without gaps or overlap, maximising
@@ -69,7 +69,7 @@ library
   other-modules:   Paths_xmonad
   hs-source-dirs:  src
   build-depends:   base                  >= 4.9 && < 5
-                 , X11                   >= 1.8 && < 1.10
+                 , X11                   >= 1.10 && < 1.11
                  , containers
                  , data-default
                  , directory
